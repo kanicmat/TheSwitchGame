@@ -54,7 +54,23 @@ wire clk1Hz;
     HexDisplay h1(tens, hex5);
 endmodule
 
-module prompts();//randomizes switch selection and uses LEDs to communicate selection 
+module prompts(chooseFlag, currSwitchArrangement, newExpectedSwitchArrangement, newLEDarrangement);//randomizes switch selection and uses LEDs to communicate selection 
+    input chooseFlag;
+    input [9:0] currSwitchArrangement;
+    output [9:0] newExpectedSwitchArrangement, newLEDarrangement;
+
+    //choose random number bewteen 0-9 for the 10 switches
+    reg [3:0] rVal;
+    reg [9:0] xorVal;
+
+    assign xorVal = 10'b0000000001;
+    
+    always @(chooseFlag) begin //choose a new number everytime flag is changed
+        rVal = {$random} % 10;
+        xorVal = (10'b1 << rVal);
+        newExpectedSwitchArrangement = currSwitchArrangement ^ xorVal;
+        newLEDarrangement = xorVal;
+    end
 
 endmodule
 
