@@ -54,7 +54,15 @@ wire clk1Hz;
     HexDisplay h1(tens, hex5);
 endmodule
 
-module prompts(chooseFlag, currSwitchArrangement, newExpectedSwitchArrangement, newLEDarrangement);//randomizes switch selection and uses LEDs to communicate selection 
+//Determines what prompts to give out for the LEDS
+module LEDPrompts(
+    input clk,
+    input chooseFlag,
+    input [9:0] currSwitchArrangement,
+    output reg [9:0] newExpectedSwitchArrangement,
+    output reg [9:0] newLEDarrangement
+);   
+
     input chooseFlag;
     input [9:0] currSwitchArrangement;
     output [9:0] newExpectedSwitchArrangement, newLEDarrangement;
@@ -62,17 +70,67 @@ module prompts(chooseFlag, currSwitchArrangement, newExpectedSwitchArrangement, 
     //choose random number bewteen 0-9 for the 10 switches
     reg [3:0] rVal;
     reg [9:0] xorVal;
+    reg choosFlagPrev;
 
-    assign xorVal = 10'b0000000001;
+    //Initial values
+    initial begin
+        newExpectedSwitchArrangement = 10'b0;
+        newLEDarrangement = 10'b0;
+        rVal = 4'b0;
+        xorVal = 10'b0;
+        chooseFlag_prev = 1'b0;
+    end
     
-    always @(chooseFlag) begin //choose a new number everytime flag is changed
-        rVal = {$random} % 10;
-        xorVal = (10'b1 << rVal);
-        newExpectedSwitchArrangement = currSwitchArrangement ^ xorVal;
-        newLEDarrangement = xorVal;
+    always @(posedge clk) begin //choose a new number everytime flag is changed
+        if (chooseFlag && !chooseFlag_prev) begin
+            rVal <= {$random} % 10;
+            xorVal <= (10'b1 << rVal);
+            newExpectedSwitchArrangement <= currSwitchArrangement ^ xorVal;
+            newLEDarrangement <= xorVal; //light should be on for the switch needed
+        end
+        chooseFlag_prev <= chooseFlag;
     end
 
 endmodule
+
+//Run if any switches on SW has changed
+module switchChange(input clk, input [9:0] currSwitchArrangement, output reg checkFlag);
+    reg [9:0] prevSwitches;
+
+    initial begin
+        checkFlag = 1'b0;
+    end
+
+    always @(posedge clk) begin
+        if(prevSwitches != currSwitchArrangement)
+            checkFlag <= ~checkFlag; //raise flag that switches has changed to check if switches are correct in changing or not
+        prev_switches <= currSwitchArrangement;
+    end
+
+endmodule
+
+//Checks if current switch arrangement is the expected arrangment when checkflag is changed
+//Output isCorrect lets us know if the arrangment is correct or not
+module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, ExpectedSwitchArrangement, output reg isCorrect);
+    reg prevCheckFlag;
+
+    initial begin
+        prevCheckFlag = 1'b0;
+    end
+
+    always @(posedge clk) begin
+        if (checkFlag && !prevCheckFlag) begin
+            if (currSwitchArrangement == ExpectedSwitchArrangement)
+                isCorrect <= 1'b1;
+            else
+                isCorrect <= 1'b0;      
+        end
+        prevCheckFlag <= checkFlag;
+    end
+
+
+endmodule
+
 
 // the clock divider module provided on eclass 
 module ClockDivider(cin, cout);
