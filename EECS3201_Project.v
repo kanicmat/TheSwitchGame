@@ -72,7 +72,6 @@ module LEDPrompts(
     //choose random number bewteen 0-9 for the 10 switches
     reg [3:0] rVal;
     reg [9:0] xorVal;
-    reg chooseFlag;
 
     //Initial values
     initial begin
