@@ -72,6 +72,7 @@ module LEDPrompts(
     //choose random number bewteen 0-9 for the 10 switches
     reg [3:0] rVal;
     reg [9:0] xorVal;
+    reg prevChooseFlag;
 
     //Initial values
     initial begin
@@ -79,17 +80,17 @@ module LEDPrompts(
         newLEDarrangement = 10'b0;
         rVal = 4'b0;
         xorVal = 10'b0;
-        chooseFlag = 1'b0;
+        prevChooseFlag = 1'b0;
     end
     
     always @(posedge clk) begin //choose a new number everytime flag is changed
-        if (chooseFlag && !chooseFlag) begin
+        if (chooseFlag && !prevChooseFlag) begin
             rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
             xorVal <= (10'b1 << rVal);
             newExpectedSwitchArrangement <= currSwitchArrangement ^ xorVal;
             newLEDarrangement <= xorVal; //light should be on for the switch needed
         end
-        chooseFlag <= chooseFlag;
+        prevChooseFlag <= chooseFlag;
     end
 
 endmodule
