@@ -5,11 +5,17 @@ module EECS3201_Project(
 	input CLOCK_50,        // 50 MHz
     input [1:0] KEY,       // the buttons on the board 
     input [9:0] SW,        // switches  
-    output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5
+    output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
 	output [9:0] LEDR
 );
 
+    wire SWChanged, isCorrect;
+    wire [9:0] ExpectedSwitchArrangement;
+
 	timer timer(CLOCK_50, ~KEY[0], HEX4, HEX5); 
+    switchChange switchChangeInst(CLOCK_50, SW, ~SWChanged);
+    LEDPrompts LEDPromptsInst(CLOCK_50, ~SWChanged, SW, ExpectedSwitchArrangement, LEDR);
+    checkSwitchArrangement checkSwitchArrangementInst(CLOCK_50, ~SWChanged, SW, ExpectedSwitchArrangement, isCorrect);
 
 endmodule
 
@@ -63,14 +69,10 @@ module LEDPrompts(
     output reg [9:0] newLEDarrangement
 );   
 
-    input chooseFlag;
-    input [9:0] currSwitchArrangement;
-    output [9:0] newExpectedSwitchArrangement, newLEDarrangement;
-
     //choose random number bewteen 0-9 for the 10 switches
     reg [3:0] rVal;
     reg [9:0] xorVal;
-    reg choosFlagPrev;
+    reg chooseFlag;
 
     //Initial values
     initial begin
@@ -78,17 +80,17 @@ module LEDPrompts(
         newLEDarrangement = 10'b0;
         rVal = 4'b0;
         xorVal = 10'b0;
-        chooseFlag_prev = 1'b0;
+        chooseFlag = 1'b0;
     end
     
     always @(posedge clk) begin //choose a new number everytime flag is changed
-        if (chooseFlag && !chooseFlag_prev) begin
-            rVal <= {$random} % 10;
+        if (chooseFlag && !chooseFlag) begin
+            rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
             xorVal <= (10'b1 << rVal);
             newExpectedSwitchArrangement <= currSwitchArrangement ^ xorVal;
             newLEDarrangement <= xorVal; //light should be on for the switch needed
         end
-        chooseFlag_prev <= chooseFlag;
+        chooseFlag <= chooseFlag;
     end
 
 endmodule
@@ -99,19 +101,20 @@ module switchChange(input clk, input [9:0] currSwitchArrangement, output reg che
 
     initial begin
         checkFlag = 1'b0;
+        prevSwitches = currSwitchArrangement;
     end
 
     always @(posedge clk) begin
         if(prevSwitches != currSwitchArrangement)
             checkFlag <= ~checkFlag; //raise flag that switches has changed to check if switches are correct in changing or not
-        prev_switches <= currSwitchArrangement;
+        prevSwitches <= currSwitchArrangement;
     end
 
 endmodule
 
 //Checks if current switch arrangement is the expected arrangment when checkflag is changed
 //Output isCorrect lets us know if the arrangment is correct or not
-module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, ExpectedSwitchArrangement, output reg isCorrect);
+module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, input [9:0] ExpectedSwitchArrangement, output reg isCorrect);
     reg prevCheckFlag;
 
     initial begin
