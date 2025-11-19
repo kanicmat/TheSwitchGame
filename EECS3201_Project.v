@@ -2,20 +2,21 @@
 
 
 module EECS3201_Project(
-	input CLOCK_50,        // 50 MHz
+	input MAX10_CLK1_50,        // 50 MHz
     input [1:0] KEY,       // the buttons on the board 
     input [9:0] SW,        // switches  
     output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
 	output [9:0] LEDR
 );
 
-    wire SWChanged, isCorrect;
+    wire checkFlag, isCorrect;
+    wire chooseFlag;
     wire [9:0] ExpectedSwitchArrangement;
 
-	timer timer(CLOCK_50, ~KEY[0], HEX4, HEX5); 
-    switchChange switchChangeInst(CLOCK_50, SW, ~SWChanged);
-    LEDPrompts LEDPromptsInst(CLOCK_50, ~SWChanged, SW, ExpectedSwitchArrangement, LEDR);
-    checkSwitchArrangement checkSwitchArrangementInst(CLOCK_50, ~SWChanged, SW, ExpectedSwitchArrangement, isCorrect);
+	timer timer(MAX10_CLK1_50, ~KEY[0], HEX4, HEX5); 
+    LEDPrompts LEDPromptsInst(MAX10_CLK1_50, chooseFlag, SW, ExpectedSwitchArrangement, LEDR);
+    switchChange switchChangeInst(MAX10_CLK1_50, SW, checkFlag);
+    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag);
 
 endmodule
 
@@ -80,11 +81,11 @@ module LEDPrompts(
         newLEDarrangement = 10'b0;
         rVal = 4'b0;
         xorVal = 10'b0;
-        prevChooseFlag = 1'b0;
+        prevChooseFlag = 1'b1;
     end
     
     always @(posedge clk) begin //choose a new number everytime flag is changed
-        if (chooseFlag && !prevChooseFlag) begin
+        if (chooseFlag != prevChooseFlag) begin
             rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
             xorVal <= (10'b1 << rVal);
             newExpectedSwitchArrangement <= currSwitchArrangement ^ xorVal;
@@ -114,7 +115,7 @@ endmodule
 
 //Checks if current switch arrangement is the expected arrangment when checkflag is changed
 //Output isCorrect lets us know if the arrangment is correct or not
-module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, input [9:0] ExpectedSwitchArrangement, output reg isCorrect);
+module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, input [9:0] ExpectedSwitchArrangement, output reg isCorrect, chooseFlag);
     reg prevCheckFlag;
 
     initial begin
@@ -122,11 +123,12 @@ module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitch
     end
 
     always @(posedge clk) begin
-        if (checkFlag && !prevCheckFlag) begin
+        if (checkFlag != prevCheckFlag) begin
             if (currSwitchArrangement == ExpectedSwitchArrangement)
                 isCorrect <= 1'b1;
             else
-                isCorrect <= 1'b0;      
+                isCorrect <= 1'b0; 
+            chooseFlag = ~chooseFlag;     
         end
         prevCheckFlag <= checkFlag;
     end
@@ -185,3 +187,4 @@ module HexDisplay(
         endcase
     end
 endmodule
+
