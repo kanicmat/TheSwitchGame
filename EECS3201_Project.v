@@ -2,63 +2,89 @@
 
 
 module EECS3201_Project(
-	input MAX10_CLK1_50,        // 50 MHz
-    input [1:0] KEY,       // the buttons on the board 
-    input [9:0] SW,        // switches  
+    input MAX10_CLK1_50,        
+    input [1:0] KEY,            
+    input [9:0] SW,             
     output [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5,
-	output [9:0] LEDR
+    output [9:0] LEDR
 );
 
     wire checkFlag, isCorrect;
     wire chooseFlag;
     wire [9:0] ExpectedSwitchArrangement;
+    wire timeout;
 
-	timer timer(MAX10_CLK1_50, ~KEY[0], HEX4, HEX5); 
-    LEDPrompts LEDPromptsInst(MAX10_CLK1_50, chooseFlag, SW, ExpectedSwitchArrangement, LEDR);
+    // reset button
+    wire reset = ~KEY[0];
+
+    // override stop condition when reset is pressed (was having some issues with the countdown and leds not properly reseting) 
+    wire adjusted_isCorrect = reset ? 1'b1 : isCorrect;
+
+    // Timer
+    timer timerInst(
+        MAX10_CLK1_50, 
+        reset,
+        ~adjusted_isCorrect,  // stop_timer (make sure the timer properly resets) 
+        HEX0, HEX1, 
+        timeout
+    );
+
+    wire [9:0] ledPrompt;
+    LEDPrompts LEDPromptsInst(MAX10_CLK1_50, chooseFlag, SW, ExpectedSwitchArrangement, ledPrompt);
+
     switchChange switchChangeInst(MAX10_CLK1_50, SW, checkFlag);
+
     checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag);
 
-endmodule
+    // LED output: timeout or reset overrides normal LEDs
+    assign LEDR = (timeout || reset) ? 10'b1111111111 : ledPrompt;
 
+endmodule
 
 module highScore(); // every round passed = +2 points every 5 rounds passed points double
 
 endmodule
 
-
-module timer(input clk, input reset_btn, output [6:0] hex4, hex5); // timer for each round (10-15 seconds????)+ 5-10 seconds between rounds + automatically resets with each new round and when button key0 pressed. 
-wire clk1Hz;
+/*The timer lags with the switch input so if we were to have the timer reset for every correct input there would be a significant lag
+to fix the lag, I altered the timer a bit so that it counts down from 20 and the user has to rack up the highest possible score in those 20 seconds
+the reset button and incorrect input case still work as initially designed
+Also I added a timeout case so if the timer runs out all the LEDs turn on to signal that the game is over until the reset button is pressed*/
+module timer(
+    input clk, 
+    input reset_btn, 
+    input stop_timer, 
+    output [6:0] hex0, 
+    output [6:0] hex1,
+    output reg timeout
+); 
+    wire clk1Hz;
     ClockDivider cd(clk, clk1Hz);
 
-    reg [5:0] count;        // countdown 0-30
-   
+    reg [5:0] count;        
+    reg [5:0] max_time;
 
-    // 15 for each round and 5 for reset     
-	reg [5:0] max_time;
     always @(*) begin
-        if ()// if round= start max time= 15 seconds 
-            max_time = 6'd15;
-        else // OW max_time = 5 seconds for reset 
-            max_time = 6'd05;
+        max_time = 6'd20; 
     end
-
 
     always @(posedge clk1Hz or posedge reset_btn) begin
         if (reset_btn)
             count <= max_time;         
-        else if (!paused && count > 0)
+        else if (!stop_timer && count > 0)
             count <= count - 1;        
         else
-            count <= count;            
+            count <= count;
     end
 
-	// 'tens' place will be assigned to HEX0 and 'ones' place will be assigned to HEX1 
+    always @(*) begin
+        timeout = (count == 0) ? 1'b1 : 1'b0;
+    end
+
     wire [3:0] tens = count / 10;
     wire [3:0] ones = count % 10;
 
-    // initialize HexDisplay module
-    HexDisplay h0(ones, hex4);
-    HexDisplay h1(tens, hex5);
+    HexDisplay h0(ones, hex0);
+    HexDisplay h1(tens, hex1);
 endmodule
 
 //Determines what prompts to give out for the LEDS
@@ -68,14 +94,14 @@ module LEDPrompts(
     input [9:0] currSwitchArrangement,
     output reg [9:0] newExpectedSwitchArrangement,
     output reg [9:0] newLEDarrangement
-);   
+);  
 
-    //choose random number bewteen 0-9 for the 10 switches
+	//choose random number bewteen 0-9 for the 10 switches 
     reg [3:0] rVal;
     reg [9:0] xorVal;
     reg prevChooseFlag;
 
-    //Initial values
+	 //Initial values
     initial begin
         newExpectedSwitchArrangement = 10'b0;
         newLEDarrangement = 10'b0;
@@ -93,11 +119,14 @@ module LEDPrompts(
         end
         prevChooseFlag <= chooseFlag;
     end
-
 endmodule
 
 //Run if any switches on SW has changed
-module switchChange(input clk, input [9:0] currSwitchArrangement, output reg checkFlag);
+module switchChange(
+    input clk, 
+    input [9:0] currSwitchArrangement, 
+    output reg checkFlag
+);
     reg [9:0] prevSwitches;
 
     initial begin
@@ -110,12 +139,18 @@ module switchChange(input clk, input [9:0] currSwitchArrangement, output reg che
             checkFlag <= ~checkFlag; //raise flag that switches has changed to check if switches are correct in changing or not
         prevSwitches <= currSwitchArrangement;
     end
-
 endmodule
 
 //Checks if current switch arrangement is the expected arrangment when checkflag is changed
 //Output isCorrect lets us know if the arrangment is correct or not
-module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitchArrangement, input [9:0] ExpectedSwitchArrangement, output reg isCorrect, chooseFlag);
+module checkSwitchArrangement(
+    input clk, 
+    input checkFlag, 
+    input [9:0] currSwitchArrangement, 
+    input [9:0] ExpectedSwitchArrangement, 
+    output reg isCorrect, 
+    output reg chooseFlag
+);
     reg prevCheckFlag;
 
     initial begin
@@ -128,14 +163,11 @@ module checkSwitchArrangement(input clk, input checkFlag, input [9:0] currSwitch
                 isCorrect <= 1'b1;
             else
                 isCorrect <= 1'b0; 
-            chooseFlag = ~chooseFlag;     
+            chooseFlag <= ~chooseFlag;     
         end
         prevCheckFlag <= checkFlag;
     end
-
-
 endmodule
-
 
 // the clock divider module provided on eclass 
 module ClockDivider(cin, cout);
@@ -145,18 +177,16 @@ module ClockDivider(cin, cout);
 // The clock divider toggles cout every 25 million cycles of the input clock
     input cin;
     output reg cout;
-
     reg [31:0] count;
     parameter D = 32'd25000000;  
 
-   always @(posedge cin)
-begin
-   count <= count + 32'd1;
-      if (count >= (D-1)) begin
-         cout <= ~cout;
-         count <= 32'd0;
-      end
-end
+    always @(posedge cin) begin
+        count <= count + 32'd1;
+        if (count >= (D-1)) begin
+            cout <= ~cout;
+            count <= 32'd0;
+        end
+    end
 endmodule
 
 //HexDisplay module from my lab3 submission file
@@ -164,7 +194,6 @@ module HexDisplay(
     input [3:0] x,
     output reg [6:0] hex
 );
-
     always @(x) begin
         case(x)
             0: hex = 7'b1000000;
@@ -177,7 +206,7 @@ module HexDisplay(
             7: hex = 7'b1111000;
             8: hex = 7'b0000000;
             9: hex = 7'b0010000;
-            10: hex = 7'b0001000;
+			10: hex = 7'b0001000;
             11: hex = 7'b0000011;
             12: hex = 7'b1000110;
             13: hex = 7'b0100001;
@@ -187,4 +216,3 @@ module HexDisplay(
         endcase
     end
 endmodule
-
