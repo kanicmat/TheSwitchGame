@@ -34,10 +34,14 @@ module EECS3201_Project(
 
     switchChange switchChangeInst(MAX10_CLK1_50, SW, checkFlag);
 
-    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag);
+    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag, HEX5, HEX4);
 
     // LED output: timeout or reset overrides normal LEDs
     assign LEDR = (timeout || reset) ? 10'b1111111111 : ledPrompt;
+    assign HEX2 = 7'b0000000;
+    assign HEX3 = 7'b0000000;
+
+
 
 endmodule
 
@@ -149,24 +153,35 @@ module checkSwitchArrangement(
     input [9:0] currSwitchArrangement, 
     input [9:0] ExpectedSwitchArrangement, 
     output reg isCorrect, 
-    output reg chooseFlag
+    output reg chooseFlag, 
+	 output [6:0] HEX5,
+	 output [6:0] HEX4
 );
     reg prevCheckFlag;
+	 reg [6:0] score;
 
     initial begin
         prevCheckFlag = 1'b0;
+		  score = 7'b0000000;
     end
 
     always @(posedge clk) begin
         if (checkFlag != prevCheckFlag) begin
-            if (currSwitchArrangement == ExpectedSwitchArrangement)
+            if (currSwitchArrangement == ExpectedSwitchArrangement) begin
                 isCorrect <= 1'b1;
+					 score <= score + 1;
+				end
             else
                 isCorrect <= 1'b0; 
             chooseFlag <= ~chooseFlag;     
         end
         prevCheckFlag <= checkFlag;
     end
+	 wire [3:0] tens = score / 10;
+    wire [3:0] ones = score % 10;
+
+    HexDisplay h0(ones, HEX4);
+    HexDisplay h1(tens, HEX5);
 endmodule
 
 // the clock divider module provided on eclass 
@@ -216,3 +231,7 @@ module HexDisplay(
         endcase
     end
 endmodule
+
+
+
+
