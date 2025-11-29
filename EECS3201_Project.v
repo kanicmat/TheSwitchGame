@@ -34,12 +34,12 @@ module EECS3201_Project(
 
     switchChange switchChangeInst(MAX10_CLK1_50, SW, checkFlag);
 
-    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag, HEX5, HEX4);
+    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, reset, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag, HEX5, HEX4);
 
     // LED output: timeout or reset overrides normal LEDs
     assign LEDR = (timeout || reset) ? 10'b1111111111 : ledPrompt;
-    assign HEX2 = 7'b0000000;
-    assign HEX3 = 7'b0000000;
+    assign HEX2 = 7'b1111111;
+    assign HEX3 = 7'b1111111;
 
 
 
@@ -149,6 +149,7 @@ endmodule
 //Output isCorrect lets us know if the arrangment is correct or not
 module checkSwitchArrangement(
     input clk, 
+    input reset,
     input checkFlag, 
     input [9:0] currSwitchArrangement, 
     input [9:0] ExpectedSwitchArrangement, 
@@ -166,18 +167,22 @@ module checkSwitchArrangement(
     end
 
     always @(posedge clk) begin
-        if (checkFlag != prevCheckFlag) begin
-            if (currSwitchArrangement == ExpectedSwitchArrangement) begin
-                isCorrect <= 1'b1;
-					 score <= score + 1;
-				end
-            else
-                isCorrect <= 1'b0; 
-            chooseFlag <= ~chooseFlag;     
+        if(reset)
+            score <= 7'b0000000;
+        else begin
+            if (checkFlag != prevCheckFlag) begin
+                if (currSwitchArrangement == ExpectedSwitchArrangement) begin
+                    isCorrect <= 1'b1;
+                    score <= score + 1;
+                    end
+                else
+                    isCorrect <= 1'b0; 
+                chooseFlag <= ~chooseFlag;     
+            end
+            prevCheckFlag <= checkFlag;
         end
-        prevCheckFlag <= checkFlag;
     end
-	 wire [3:0] tens = score / 10;
+	wire [3:0] tens = score / 10;
     wire [3:0] ones = score % 10;
 
     HexDisplay h0(ones, HEX4);
@@ -231,6 +236,10 @@ module HexDisplay(
         endcase
     end
 endmodule
+
+
+
+
 
 
 
