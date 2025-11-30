@@ -9,8 +9,7 @@ module EECS3201_Project(
     output [9:0] LEDR
 );
 
-    wire checkFlag, isCorrect;
-    wire chooseFlag;
+    wire playGame;
     wire [9:0] ExpectedSwitchArrangement;
     wire timeout;
 
@@ -18,7 +17,7 @@ module EECS3201_Project(
     wire reset = ~KEY[0];
 
     // override stop condition when reset is pressed (was having some issues with the countdown and leds not properly reseting) 
-    wire adjusted_isCorrect = reset ? 1'b1 : isCorrect;
+    wire adjusted_isCorrect = reset ? 1'b1 : playGame;
 
     // Timer
     timer timerInst(
@@ -29,15 +28,9 @@ module EECS3201_Project(
         timeout
     );
 
-    wire [9:0] ledPrompt;
-    LEDPrompts LEDPromptsInst(MAX10_CLK1_50, chooseFlag, SW, ExpectedSwitchArrangement, ledPrompt);
+    //Gameplay
+    gameplay playingTheGame(MAX10_CLK1_50, reset, timeout, SW, HEX4, HEX5, LEDR, playGame);
 
-    switchChange switchChangeInst(MAX10_CLK1_50, SW, checkFlag);
-
-    checkSwitchArrangement checkSwitchArrangementInst(MAX10_CLK1_50, reset, checkFlag, SW, ExpectedSwitchArrangement, isCorrect, chooseFlag, HEX5, HEX4);
-
-    // LED output: timeout or reset overrides normal LEDs
-    assign LEDR = (timeout || reset) ? 10'b1111111111 : ledPrompt;
     assign HEX2 = 7'b1111111;
     assign HEX3 = 7'b1111111;
 
@@ -45,9 +38,101 @@ module EECS3201_Project(
 
 endmodule
 
-module highScore(); // every round passed = +2 points every 5 rounds passed points double
+module gameplay(
+    input clk,
+    input reset,
+    input timeout,
+    input [9:0] currSwitchArrangement,
+    output [6:0] HEX4, HEX5,
+    output [9:0] LEDR,  
+    output reg playgame
+);
+
+    reg [1:0] state;
+    //0 = choose prompt
+    //1 = wait for switch change, compare new switch arrangement to old, add or subtract points
+    //2 = game ends
+     
+    reg [9:0] newLEDarrangement, originalSwitches;
+
+    //state == 0 variables 
+    reg [9:0] newExpectedSwitchArrangement;
+    reg [3:0] rVal; //random value
+    reg [9:0] xorVal;
+
+    //state == 1 variables
+    reg [9:0] prevSwitches;
+    reg [6:0] score;
+
+    always @(posedge clk or posedge reset) begin
+        if(reset) begin
+            state <= 2'b0;
+            originalSwitches <= currSwitchArrangement;
+            newExpectedSwitchArrangement <= currSwitchArrangement;
+            newLEDarrangement <= 10'b1111111111;
+            rVal <= 4'b0;
+            xorVal <= 10'b0;
+
+            prevSwitches <= currSwitchArrangement;
+            score <= 7'b0000000;
+
+            playgame <= 1'b1;
+        end
+        else if (timeout) begin
+            //Game over due to timeout
+            state <= 2'b10;
+            newLEDarrangement <= 10'b1111111111;
+            playgame <= 1'b0;
+        end
+        else begin
+            case(state)
+                2'b00: begin //Choosing prompt state
+                    rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
+                    xorVal <= (10'b1 << rVal);
+                    originalSwitches <= currSwitchArrangement;
+                    newExpectedSwitchArrangement <= originalSwitches ^ xorVal;
+                    newLEDarrangement <= xorVal; //light should be on for the switch needed
+                    prevSwitches <= currSwitchArrangement;
+                    state <= 2'b01;
+                end
+                
+                2'b01: begin // Waiting for switch change
+                    newLEDarrangement <= xorVal;
+                    newExpectedSwitchArrangement <= originalSwitches ^ xorVal;
+
+                    if(prevSwitches != currSwitchArrangement) begin
+                        if (currSwitchArrangement == newExpectedSwitchArrangement) begin
+                            //Correct answer
+                            score <= score + 1;
+                            state <= 2'b00; // Get new prompt
+                        end
+                        else begin
+                            //Wrong answer
+                            state <= 2'b10;
+                            newLEDarrangement <= 10'b1111111111;
+                            playgame <= 1'b0;
+                        end
+                    end
+                end
+                
+                2'b10: begin // Game ended state
+                    newLEDarrangement <= 10'b1111111111;
+                    playgame <= 1'b0;
+                end
+            endcase
+        end
+    end
+
+    wire [3:0] tens = score / 10;
+    wire [3:0] ones = score % 10;
+     
+    HexDisplay h0(ones, HEX4);
+    HexDisplay h1(tens, HEX5);
+    
+    assign LEDR = newLEDarrangement;
 
 endmodule
+
 
 /*The timer lags with the switch input so if we were to have the timer reset for every correct input there would be a significant lag
 to fix the lag, I altered the timer a bit so that it counts down from 20 and the user has to rack up the highest possible score in those 20 seconds
@@ -91,103 +176,6 @@ module timer(
     HexDisplay h1(tens, hex1);
 endmodule
 
-//Determines what prompts to give out for the LEDS
-module LEDPrompts(
-    input clk,
-    input chooseFlag,
-    input [9:0] currSwitchArrangement,
-    output reg [9:0] newExpectedSwitchArrangement,
-    output reg [9:0] newLEDarrangement
-);  
-
-	//choose random number bewteen 0-9 for the 10 switches 
-    reg [3:0] rVal;
-    reg [9:0] xorVal;
-    reg prevChooseFlag;
-
-	 //Initial values
-    initial begin
-        newExpectedSwitchArrangement = 10'b0;
-        newLEDarrangement = 10'b0;
-        rVal = 4'b0;
-        xorVal = 10'b0;
-        prevChooseFlag = 1'b1;
-    end
-    
-    always @(posedge clk) begin //choose a new number everytime flag is changed
-        if (chooseFlag != prevChooseFlag) begin
-            rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
-            xorVal <= (10'b1 << rVal);
-            newExpectedSwitchArrangement <= currSwitchArrangement ^ xorVal;
-            newLEDarrangement <= xorVal; //light should be on for the switch needed
-        end
-        prevChooseFlag <= chooseFlag;
-    end
-endmodule
-
-//Run if any switches on SW has changed
-module switchChange(
-    input clk, 
-    input [9:0] currSwitchArrangement, 
-    output reg checkFlag
-);
-    reg [9:0] prevSwitches;
-
-    initial begin
-        checkFlag = 1'b0;
-        prevSwitches = currSwitchArrangement;
-    end
-
-    always @(posedge clk) begin
-        if(prevSwitches != currSwitchArrangement)
-            checkFlag <= ~checkFlag; //raise flag that switches has changed to check if switches are correct in changing or not
-        prevSwitches <= currSwitchArrangement;
-    end
-endmodule
-
-//Checks if current switch arrangement is the expected arrangment when checkflag is changed
-//Output isCorrect lets us know if the arrangment is correct or not
-module checkSwitchArrangement(
-    input clk, 
-    input reset,
-    input checkFlag, 
-    input [9:0] currSwitchArrangement, 
-    input [9:0] ExpectedSwitchArrangement, 
-    output reg isCorrect, 
-    output reg chooseFlag, 
-	 output [6:0] HEX5,
-	 output [6:0] HEX4
-);
-    reg prevCheckFlag;
-	 reg [6:0] score;
-
-    initial begin
-        prevCheckFlag = 1'b0;
-		  score = 7'b0000000;
-    end
-
-    always @(posedge clk) begin
-        if(reset)
-            score <= 7'b0000000;
-        else begin
-            if (checkFlag != prevCheckFlag) begin
-                if (currSwitchArrangement == ExpectedSwitchArrangement) begin
-                    isCorrect <= 1'b1;
-                    score <= score + 1;
-                    end
-                else
-                    isCorrect <= 1'b0; 
-                chooseFlag <= ~chooseFlag;     
-            end
-            prevCheckFlag <= checkFlag;
-        end
-    end
-	wire [3:0] tens = score / 10;
-    wire [3:0] ones = score % 10;
-
-    HexDisplay h0(ones, HEX4);
-    HexDisplay h1(tens, HEX5);
-endmodule
 
 // the clock divider module provided on eclass 
 module ClockDivider(cin, cout);
@@ -226,7 +214,7 @@ module HexDisplay(
             7: hex = 7'b1111000;
             8: hex = 7'b0000000;
             9: hex = 7'b0010000;
-			10: hex = 7'b0001000;
+            10: hex = 7'b0001000;
             11: hex = 7'b0000011;
             12: hex = 7'b1000110;
             13: hex = 7'b0100001;
@@ -236,11 +224,3 @@ module HexDisplay(
         endcase
     end
 endmodule
-
-
-
-
-
-
-
-
