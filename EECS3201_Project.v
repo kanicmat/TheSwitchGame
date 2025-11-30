@@ -10,31 +10,24 @@ module EECS3201_Project(
 );
 
     wire playGame;
-    wire [9:0] ExpectedSwitchArrangement;
     wire timeout;
 
     // reset button
     wire reset = ~KEY[0];
 
-    // override stop condition when reset is pressed (was having some issues with the countdown and leds not properly reseting) 
-    wire adjusted_isCorrect = reset ? 1'b1 : playGame;
-
-    // Timer
     timer timerInst(
         MAX10_CLK1_50, 
         reset,
-        ~adjusted_isCorrect,  // stop_timer (make sure the timer properly resets) 
+        ~playGame,  // stop_timer = 1 when playGame = 0 (game over)
         HEX0, HEX1, 
         timeout
     );
 
-    //Gameplay
+    // Gameplay
     gameplay playingTheGame(MAX10_CLK1_50, reset, timeout, SW, HEX4, HEX5, LEDR, playGame);
 
     assign HEX2 = 7'b1111111;
     assign HEX3 = 7'b1111111;
-
-
 
 endmodule
 
@@ -79,14 +72,14 @@ module gameplay(
             playgame <= 1'b1;
         end
         else if (timeout) begin
-            //Game over due to timeout
+            //game ended due to timeout
             state <= 2'b10;
             newLEDarrangement <= 10'b1111111111;
             playgame <= 1'b0;
         end
         else begin
             case(state)
-                2'b00: begin //Choosing prompt state
+                2'b00: begin //choosing prompt state
                     rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
                     xorVal <= (10'b1 << rVal);
                     originalSwitches <= currSwitchArrangement;
@@ -102,12 +95,12 @@ module gameplay(
 
                     if(prevSwitches != currSwitchArrangement) begin
                         if (currSwitchArrangement == newExpectedSwitchArrangement) begin
-                            //Correct answer
+                            //correct answer
                             score <= score + 1;
-                            state <= 2'b00; // Get new prompt
+                            state <= 2'b00; //get new prompt
                         end
                         else begin
-                            //Wrong answer
+                            //wrong answer
                             state <= 2'b10;
                             newLEDarrangement <= 10'b1111111111;
                             playgame <= 1'b0;
@@ -115,7 +108,7 @@ module gameplay(
                     end
                 end
                 
-                2'b10: begin // Game ended state
+                2'b10: begin //game ended state
                     newLEDarrangement <= 10'b1111111111;
                     playgame <= 1'b0;
                 end
