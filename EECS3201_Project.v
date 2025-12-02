@@ -18,12 +18,12 @@ module EECS3201_Project(
     timer timerInst(
         MAX10_CLK1_50, 
         reset,
-        ~playGame,  // stop_timer = 1 when playGame = 0 (game over)
+        ~playGame,  //stop_timer = 1 when playGame = 0 (game over)
         HEX0, HEX1, 
         timeout
     );
 
-    // Gameplay
+    //Gameplay
     gameplay playingTheGame(MAX10_CLK1_50, reset, timeout, SW, HEX4, HEX5, LEDR, playGame);
 
     assign HEX2 = 7'b1111111;
@@ -56,7 +56,10 @@ module gameplay(
     //state == 1 variables
     reg [9:0] prevSwitches;
     reg [6:0] score;
-
+    
+    reg [31:0] count;
+    parameter D = 32'd2500000;
+    
     always @(posedge clk or posedge reset) begin
         if(reset) begin
             state <= 2'b0;
@@ -72,14 +75,14 @@ module gameplay(
             playgame <= 1'b1;
         end
         else if (timeout) begin
-            //game ended due to timeout
+            //Game over due to timeout
             state <= 2'b10;
             newLEDarrangement <= 10'b1111111111;
             playgame <= 1'b0;
         end
         else begin
             case(state)
-                2'b00: begin //choosing prompt state
+                2'b00: begin //Choosing prompt state
                     rVal <= (rVal + 7) % 10; //not true random but will go through all combinations 0-9
                     xorVal <= (10'b1 << rVal);
                     originalSwitches <= currSwitchArrangement;
@@ -89,22 +92,28 @@ module gameplay(
                     state <= 2'b01;
                 end
                 
-                2'b01: begin // Waiting for switch change
+                2'b01: begin //waiting for switch change
                     newLEDarrangement <= xorVal;
                     newExpectedSwitchArrangement <= originalSwitches ^ xorVal;
 
                     if(prevSwitches != currSwitchArrangement) begin
-                        if (currSwitchArrangement == newExpectedSwitchArrangement) begin
+                                //do switch debouncing:
+                                count <= count + 32'd1;
+                                if (count >= (D-1)) begin //debouncing done
+                                    count <= 32'd0;
+                                    if (currSwitchArrangement == newExpectedSwitchArrangement) begin
                             //correct answer
                             score <= score + 1;
                             state <= 2'b00; //get new prompt
-                        end
-                        else begin
+                                    end
+                                    else begin
                             //wrong answer
                             state <= 2'b10;
-                            newLEDarrangement <= 10'b1111111111;
-                            playgame <= 1'b0;
-                        end
+                                    end
+                                    
+                                end
+                            
+     
                     end
                 end
                 
@@ -128,7 +137,7 @@ endmodule
 
 
 /*The timer lags with the switch input so if we were to have the timer reset for every correct input there would be a significant lag
-to fix the lag, I altered the timer a bit so that it counts down from 20 and the user has to rack up the highest possible score in those 20 seconds
+To fix the lag, I altered the timer a bit so that it counts down from 20 and the user has to rack up the highest possible score in those 20 seconds
 the reset button and incorrect input case still work as initially designed
 Also I added a timeout case so if the timer runs out all the LEDs turn on to signal that the game is over until the reset button is pressed*/
 module timer(
@@ -168,7 +177,6 @@ module timer(
     HexDisplay h0(ones, hex0);
     HexDisplay h1(tens, hex1);
 endmodule
-
 
 // the clock divider module provided on eclass 
 module ClockDivider(cin, cout);
@@ -217,3 +225,8 @@ module HexDisplay(
         endcase
     end
 endmodule
+
+
+
+
+
